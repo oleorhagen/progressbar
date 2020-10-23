@@ -18,63 +18,69 @@ import (
 	"strings"
 	// "time"
 	"fmt"
+	"os"
 )
 
 type ProgressWriter struct {
-	Wrap           io.Writer // wrapped writer
+	W io.Writer // wrapped writer
+	*Renderer
+}
+
+type ProgressReader struct {
+	R io.Reader // wrapped reader
+	*Renderer
+}
+
+func NewWriter(size uint64) *ProgressWriter {
+	return &ProgressWriter{
+		Renderer: NewRenderer(size),
+	}
+}
+
+func NewReader(size uint64) *ProgressReader {
+	return &ProgressReader{
+		Renderer: NewRenderer(size),
+	}
+}
+
+func (p *ProgressWriter) Wrap(w io.Writer, size uint64) {
+	p.W = w
+	p.Renderer.Size = size
+}
+
+func (p *ProgressReader) Wrap(r io.Reader, size uint64) {
+	p.R = r
+	p.Renderer.Size = size
+}
+
+func (p *ProgressWriter) Write(data []byte) (int, error) {
+	n := len(data)
+	p.Renderer.Tick(uint64(n))
+	return n, nil
+}
+
+type Renderer struct {
 	Out            io.Writer // output device
 	Size           uint64    // size of the input
 	ProgressMarker string
 	currentCount   uint64 // current count
-	lastPercent    int
-	over           bool // set to true of writes have gone over declared N bytes
 }
 
-func New(w io.Writer, size uint64) *ProgressWriter {
-	// is a tty (?)
-	return &ProgressWriter{
-		Wrap:           w,
+func NewRenderer(size uint64) *Renderer {
+	return &Renderer{
+		Out:            os.Stderr,
 		Size:           size,
 		ProgressMarker: ".",
 	}
 }
 
-func (p *ProgressWriter) Write(data []byte) (int, error) {
-	n := len(data)
-
-	p.currentCount += uint64(n)
-	p.rendera()
-	return n, nil
-}
-
-func (p *ProgressWriter) Tick(n uint64) {
+func (p *Renderer) Tick(n uint64) {
 	p.currentCount += uint64(n)
 	p.render()
 }
 
-func (p *ProgressWriter) Finish() {
-	if p.Out == nil {
-		return
-	}
-	str := strings.Repeat(p.ProgressMarker, 100)
-	fmt.Fprint(p.Out, "\r" + str + " - 100 %%")
-}
 
-// reportGeneric prints the progressbar to the screen
-func (p *ProgressWriter) render() {
-	if p.Out == nil {
-		return
-	}
-	// Get the percentage written
-	percentNew := int((float64(p.currentCount) / float64(p.Size)) * 100)
-	if percentNew > p.lastPercent {
-		str := strings.Repeat(p.ProgressMarker, percentNew - p.lastPercent)
-		p.Out.Write([]byte(str))
-		p.lastPercent = percentNew
-	}
-}
-
-func (p *ProgressWriter) rendera() {
+func (p *Renderer) render() {
 	if p.Out == nil {
 		return
 	}
@@ -82,7 +88,28 @@ func (p *ProgressWriter) rendera() {
 
 	str := fmt.Sprintf("\r%s%s - %d ",
 		strings.Repeat(p.ProgressMarker, percent),
-		strings.Repeat(" ", 100 - percent),
+		strings.Repeat(" ", 100-percent),
 		percent)
 	fmt.Fprintf(p.Out, str)
+}
+
+func (p *Renderer) renderNoTTY() {
+	if p.Out == nil {
+		return
+	}
+	// Get the percentage written
+	// percentNew := int((float64(p.currentCount) / float64(p.Size)) * 100)
+	// if percentNew > p.lastPercent {
+	// 	str := strings.Repeat(p.ProgressMarker, percentNew-p.lastPercent)
+	// 	p.Out.Write([]byte(str))
+	// 	p.lastPercent = percentNew
+	// }
+}
+
+func (p *Renderer) Finish() {
+	if p.Out == nil {
+		return
+	}
+	str := strings.Repeat(p.ProgressMarker, 100)
+	fmt.Fprint(p.Out, "\r"+str+" - 100 %")
 }

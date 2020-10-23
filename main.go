@@ -10,15 +10,11 @@ import (
 
 func main() {
 
-	p := &progressbar.ProgressWriter{
-		Out:            os.Stdout,
-		Size:           100,
-		ProgressMarker: ".",
-	}
-
+	p := progressbar.NewWriter(100)
 	f, _ := os.Open("/dev/random")
 	for i := 0; i < 7; i++ {
 		io.CopyN(p, f, 10)
+		p.Tick(1)
 		time.Sleep(1 * time.Second)
 	}
 	p.Finish()
