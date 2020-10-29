@@ -13,12 +13,15 @@
 //    limitations under the License.
 package progressbar
 
+// TODO -- Add terminal width respect
+
 import (
-	"io"
-	"strings"
-	// "time"
 	"fmt"
+	"io"
 	"os"
+	"strings"
+
+	"github.com/mattn/go-isatty"
 )
 
 type ProgressWriter struct {
@@ -59,44 +62,28 @@ func (p *ProgressWriter) Write(data []byte) (int, error) {
 	return n, nil
 }
 
-type Renderer struct {
-	Out            io.Writer // output device
-	Size           uint64    // size of the input
-	ProgressMarker string
-	currentCount   uint64 // current count
+type Render interface {
+	render(uint64, uint64, string) string
 }
 
-func NewRenderer(size uint64) *Renderer {
-	return &Renderer{
-		Out:            os.Stderr,
-		Size:           size,
-		ProgressMarker: ".",
-	}
+type TTYWriter struct {
 }
 
-func (p *Renderer) Tick(n uint64) {
-	p.currentCount += uint64(n)
-	p.render()
-}
-
-
-func (p *Renderer) render() {
-	if p.Out == nil {
-		return
-	}
-	percent := int((float64(p.currentCount) / float64(p.Size)) * 100)
+func (p *TTYWriter) render(currentCount uint64, size uint64, marker string) string {
+	percent := int((float64(currentCount) / float64(size)) * 100)
 
 	str := fmt.Sprintf("\r%s%s - %d ",
-		strings.Repeat(p.ProgressMarker, percent),
+		strings.Repeat(marker, percent),
 		strings.Repeat(" ", 100-percent),
 		percent)
-	fmt.Fprintf(p.Out, str)
+	return str
 }
 
-func (p *Renderer) renderNoTTY() {
-	if p.Out == nil {
-		return
-	}
+type NoTTYWriter struct {
+	lastPercent int
+}
+
+func (p *NoTTYWriter) render(currentCount uint64, size uint64, marker string) string {
 	// Get the percentage written
 	// percentNew := int((float64(p.currentCount) / float64(p.Size)) * 100)
 	// if percentNew > p.lastPercent {
@@ -104,6 +91,36 @@ func (p *Renderer) renderNoTTY() {
 	// 	p.Out.Write([]byte(str))
 	// 	p.lastPercent = percentNew
 	// }
+	return ""
+}
+
+type Renderer struct {
+	Out            io.Writer // output device
+	Type           Render
+	Size           uint64 // size of the input
+	ProgressMarker string
+	currentCount   uint64 // current count
+}
+
+func NewRenderer(size uint64) *Renderer {
+	var rt Render
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		rt = &TTYWriter{}
+	} else {
+		rt = &NoTTYWriter{}
+	}
+	return &Renderer{
+		Out:            os.Stderr,
+		Size:           size,
+		ProgressMarker: ".",
+		Type:           rt,
+	}
+}
+
+func (p *Renderer) Tick(n uint64) {
+	p.currentCount += uint64(n)
+	str := p.Type.render(p.currentCount, p.Size, p.ProgressMarker)
+	fmt.Fprintf(p.Out, str)
 }
 
 func (p *Renderer) Finish() {
