@@ -1,4 +1,4 @@
-// Copyright 2020 Northern.tech AS
+// Copyright 2021 Northern.tech AS
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -119,9 +119,18 @@ type NoTTYRenderer struct {
 	ProgressMarker string
 	lastPercent    int
 	terminalWidth  int
+	headerPrinted  bool
 }
 
 func (p *NoTTYRenderer) Render(percentage int) {
+	if !p.headerPrinted {
+		// width, evenly distributed in half, taken away the characters
+		// 0%,50% & 100%
+		w := (p.terminalWidth - 2 - 3 - 4) / 2
+		fmt.Fprintf(p.Out, "0%%%[1]*s50%%%[1]*[2]s100%%\n", w, " ")
+		fmt.Fprintf(p.Out, "|%s|%[1]s|\n", strings.Repeat("-", (p.terminalWidth-3)/2))
+		p.headerPrinted = true
+	}
 	if percentage > p.lastPercent {
 		if percentage > 100 {
 			return
